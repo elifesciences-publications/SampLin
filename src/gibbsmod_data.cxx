@@ -76,6 +76,13 @@ int main(int argc, char* argv[]){
 
     int sample=0;
 
+    // Define stops
+    vector<int> stop(N);
+    for(i=0;i<N;++i){
+        k=4; while(s(i,k)==0) k--;
+        stop[i]=k;
+    }
+
     while(sample<NITER){
         sample++;
         //cout<<"sample "<<sample<<'\r'<<flush;
@@ -87,7 +94,7 @@ int main(int argc, char* argv[]){
 
         arma::mat tmp_mat(4,P,arma::fill::zeros);
         for(i=0;i<N;++i){
-            for(k=0;k<4;k++){
+            for(k=0;k<stop[i];k++){
                 tmp_mat(k,ids[i])+=s(i,k);
             }
         }
@@ -96,7 +103,7 @@ int main(int argc, char* argv[]){
             double tmp_prob_ln[P];
             double tmp_prob[P];
 
-            for(k=0;k<4;k++) tmp_mat(k,ids[i])-=s(i,k);
+            for(k=0;k<stop[i];k++) tmp_mat(k,ids[i])-=s(i,k);
             group_sizes(ids[i])+=-1;
 
             for(mu=0;mu<P;++mu){
@@ -104,7 +111,7 @@ int main(int argc, char* argv[]){
                 for(nu=0;nu<P;nu++){
                     tmp_prob_ln[mu]+=(nu!=mu) ? gsl_sf_lngamma(group_sizes(nu)+1)
                                               : gsl_sf_lngamma(group_sizes(nu)+2);
-                    for(k=0;k<4;++k) {
+                    for(k=0;k<stop[i];++k) {
                         //cout<<tmp_mat(k,nu)+s(i,k)+1<<' '<<M*(group_sizes(nu)+1)-tmp_mat(k,nu)-s(i,k)+1<<endl;
                         tmp_prob_ln[mu]+=(nu!=mu) ? gsl_sf_lnbeta(tmp_mat(k,nu)+1,M*(group_sizes(nu))-tmp_mat(k,nu)+1)
                                                   : gsl_sf_lnbeta(tmp_mat(k,nu)+s(i,k)+1,M*(group_sizes(nu)+1)-tmp_mat(k,nu)-s(i,k)+1);
@@ -119,7 +126,7 @@ int main(int argc, char* argv[]){
 
             ids[i]=gsl_ran_discrete(r,gen);
             group_sizes(ids[i])++;
-            for(k=0;k<4;k++) tmp_mat(k,ids[i])+=s(i,k);
+            for(k=0;k<stop[i];k++) tmp_mat(k,ids[i])+=s(i,k);
             gsl_ran_discrete_free(gen);
             gen=NULL;
 
