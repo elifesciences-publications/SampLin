@@ -39,9 +39,9 @@ int main(int argc, char* argv[]){
     int TRIM=atoi(argv[3]);
     int N;
     int M=20;
-	arma::vec MxLayer(4);
 	int MxLayer_min[4]; 
     int P=atoi(argv[4]); // initial number of lineages
+	vector<int> MxLayer(P);
     int RNGSEED=atoi(argv[5]);
     bool PFIX=false;
 
@@ -89,12 +89,13 @@ int main(int argc, char* argv[]){
 
     int sample=0;
 
-    // Define stops
+    // Define stops as the first non zero element in s. For instance if the occupancy is [0,0,1,2] then stop=2.
     vector<int> stop(N);
     for(i=0;i<N;++i){
         k=0; while(s(i,k)==0) k++;
         stop[i]=k;
     }
+	// ------------------------------------------------------
 
     while(sample<NITER){
         sample++;
@@ -102,7 +103,14 @@ int main(int argc, char* argv[]){
 
         arma::mat ids_mat(P,N,arma::fill::zeros);
         arma::vec group_sizes(P);
+        arma::mat group_sizes_xLayer(P,4);
         for(i=0;i<N;++i) ids_mat(ids[i],i)=1;
+
+		// filling group sizes per layer
+		for(k=0;k<4;k++){
+			for(i=0;i<N;++i) if(stop[i]<=k) group_sizes_xLayer(ids[i],k)+=1;
+		}
+
         group_sizes=arma::sum(ids_mat,1);
 
         arma::mat tmp_mat(4,P,arma::fill::zeros);
@@ -116,7 +124,11 @@ int main(int argc, char* argv[]){
             double tmp_prob_ln[P];
             double tmp_prob[P];
 
-            for(k=stop[i];k<4;k++) tmp_mat(k,ids[i])-=s(i,k);
+            for(k=stop[i];k<4;k++){
+				tmp_mat(k,ids[i])-=s(i,k);
+				group_sizes_xLayer(ids[i],k)-=1;
+			}
+
             group_sizes(ids[i])+=-1;
 
             for(mu=0;mu<P;++mu){
@@ -127,11 +139,15 @@ int main(int argc, char* argv[]){
 					// we add 1 to the group_sizes.
                     tmp_prob_ln[mu]+=(nu!=mu) ? gsl_sf_lngamma(group_sizes(nu)+1)
                                               : gsl_sf_lngamma(group_sizes(nu)+2);
-                    // Thinking about this loop, I think it should start at k=0
-				    // Rethinking about it mayber not	
-					for(k=stop[i];k<4;++k) {
-                        tmp_prob_ln[mu]+=(nu!=mu) ? gsl_sf_lnbeta(tmp_mat(k,nu)+1,MxLayer(k)*(group_sizes(nu))-tmp_mat(k,nu)+1)
-                                                  : gsl_sf_lnbeta(tmp_mat(k,nu)+s(i,k)+1,MxLayer(k)*(group_sizes(nu)+1)-tmp_mat(k,nu)-s(i,k)+1);
+				    // here we need to use group sizes that depends on k because of the missing information
+					// regarding how many progenitors occupy each layer
+					for(k=0;k<4;++k) {
+						if(stop[i]<=k){
+							tmp_prob_ln[mu]+=(nu!=mu) ? gsl_sf_lnbeta(tmp_mat(k,nu)+1,MxLayer(k)*(group_sizes_xLayer(nu,k))-tmp_mat(k,nu)+1)
+										            	: gsl_sf_lnbeta(tmp_mat(k,nu)+s(i,k)+1,MxLayer(k)*(group_sizes_xLayer(nu,k)+1)-tmp_mat(k,nu)-s(i,k)+1);
+						} else {
+							tmp_prob_ln[mu]+=gsl_sf_lnbeta(tmp_mat(k,nu)+1,MxLayer(k)*(group_sizes_xLayer(nu,k))-tmp_mat(k,nu)+1);
+						}
                     }
                 }
 
@@ -159,7 +175,7 @@ int main(int argc, char* argv[]){
             }
         }
 
-// sample N in each layer at fixed memberships using a metropolis-hastings step.
+// sample N in each category at fixed memberships using a metropolis-hastings step.
 		double lambda_prior=.01;
 
 
@@ -174,8 +190,8 @@ int main(int argc, char* argv[]){
 					// need to calculate the ratio between the likelihoods
 
 					// Add the beta functions 
-					logw_move+=gsl_sf_lnbeta(tmp_mat(i,mu)+1,mxl*group_sizes(mu)-tmp_mat(i,mu)+1);
-					logw_old+=gsl_sf_lnbeta(tmp_mat(i,mu)+1,MxLayer(i)*group_sizes(mu)-tmp_mat(i,mu)+1);
+					logw_move+=gsl_sf_lnbeta(tmp_mat(i,mu)+1,mxl*group_sizes_xLayer(mu,i)-tmp_mat(i,mu)+1);
+					logw_old+=gsl_sf_lnbeta(tmp_mat(i,mu)+1,MxLayer(i)*group_sizes_xLayer(mu,i)-tmp_mat(i,mu)+1);
 				}	
 					// Add the binomial coefficients
 				for(k=0;k<N;k++){

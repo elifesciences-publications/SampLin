@@ -31,3 +31,12 @@ double gsl_ran_beta_pdflog(double x, double alpha, double beta){
         return( (alpha-1)*log(x) + (beta-1)*log(1-x)) - gsl_sf_lnbeta(alpha,beta);
     }
 }
+
+double MultiBetaLog(const arma::vec &x,double alpha=0){
+    double r=0;
+    for(unsigned int i=0;i<x.n_elem;++i){
+        r+=gsl_sf_lngamma(x(i)+alpha);
+    }
+    r+=-gsl_sf_lngamma(arma::accu(x)+x.n_elem*alpha);
+    return(r);
+}
