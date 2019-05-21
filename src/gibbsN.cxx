@@ -39,6 +39,8 @@ int main(int argc, char* argv[]){
     int TRIM=atoi(argv[3]);
     int N;
     int M=20;
+	arma::vec MxLayer(4);
+	int MxLayer_min[4]; 
     int P=atoi(argv[4]); // initial number of lineages
     int RNGSEED=atoi(argv[5]);
     bool PFIX=false;
@@ -61,6 +63,7 @@ int main(int argc, char* argv[]){
     ofstream pmukTraj(proc_folder+"/pmuk.dat");
     ofstream confTraj(proc_folder+"/configurations.dat");
     ofstream occTraj(proc_folder+"/occupancy.dat");
+    ofstream MxLayerTraj(proc_folder+"/MxLayer.dat");
 
     // output variables
 
@@ -71,7 +74,16 @@ int main(int argc, char* argv[]){
     for(unsigned int i=0;i<N;i++) ids[i] = gsl_rng_uniform_int(r,P);
 
     unsigned int i,j,k,mu,nu;
-    double F0;
+	for(i=0;i<4;++i){
+	   MxLayer_min[i]=0;
+	   for(k=0;k<N;k++){
+		   if(MxLayer_min[i]<s(k,i)) MxLayer_min[i]=s(k,i);
+	   }
+	}
+
+	for(i=0;i<4;++i){
+		MxLayer(i)=M;
+	}
 
     gsl_ran_discrete_t* gen=NULL;
 
@@ -110,12 +122,16 @@ int main(int argc, char* argv[]){
             for(mu=0;mu<P;++mu){
                 tmp_prob_ln[mu]=0;
                 for(nu=0;nu<P;nu++){
+					// The relevant term in the BoldB function deriving from the integration of the
+					// dirichlet distribution is given by the product of gamma. When nu is equal to mu
+					// we add 1 to the group_sizes.
                     tmp_prob_ln[mu]+=(nu!=mu) ? gsl_sf_lngamma(group_sizes(nu)+1)
                                               : gsl_sf_lngamma(group_sizes(nu)+2);
-                    for(k=stop[i];k<4;++k) {
-                        //cout<<tmp_mat(k,nu)+s(i,k)+1<<' '<<M*(group_sizes(nu)+1)-tmp_mat(k,nu)-s(i,k)+1<<endl;
-                        tmp_prob_ln[mu]+=(nu!=mu) ? gsl_sf_lnbeta(tmp_mat(k,nu)+1,M*(group_sizes(nu))-tmp_mat(k,nu)+1)
-                                                  : gsl_sf_lnbeta(tmp_mat(k,nu)+s(i,k)+1,M*(group_sizes(nu)+1)-tmp_mat(k,nu)-s(i,k)+1);
+                    // Thinking about this loop, I think it should start at k=0
+				    // Rethinking about it mayber not	
+					for(k=stop[i];k<4;++k) {
+                        tmp_prob_ln[mu]+=(nu!=mu) ? gsl_sf_lnbeta(tmp_mat(k,nu)+1,MxLayer(k)*(group_sizes(nu))-tmp_mat(k,nu)+1)
+                                                  : gsl_sf_lnbeta(tmp_mat(k,nu)+s(i,k)+1,MxLayer(k)*(group_sizes(nu)+1)-tmp_mat(k,nu)-s(i,k)+1);
                     }
                 }
 
@@ -143,16 +159,47 @@ int main(int argc, char* argv[]){
             }
         }
 
-        
+// sample N in each layer at fixed memberships using a metropolis-hastings step.
+		double lambda_prior=.01;
 
+
+		for(i=0;i<4;i++){
+			int mxl = (gsl_rng_uniform(r)>0.5)  ? MxLayer(i)+1 
+  							    				: MxLayer(i)-1;
+			double logw_move=0;
+			double logw_old=0;
+			
+			if(mxl>MxLayer_min[i] && false){
+				for(mu=0;mu<P;mu++){
+					// need to calculate the ratio between the likelihoods
+
+					// Add the beta functions 
+					logw_move+=gsl_sf_lnbeta(tmp_mat(i,mu)+1,mxl*group_sizes(mu)-tmp_mat(i,mu)+1);
+					logw_old+=gsl_sf_lnbeta(tmp_mat(i,mu)+1,MxLayer(i)*group_sizes(mu)-tmp_mat(i,mu)+1);
+				}	
+					// Add the binomial coefficients
+				for(k=0;k<N;k++){
+					logw_old+=gsl_sf_lngamma(MxLayer(i)+1)-gsl_sf_lngamma(s(k,i)+1)-gsl_sf_lngamma(MxLayer(i)-s(k,i)+2);
+					logw_move+=gsl_sf_lngamma(mxl+1)-gsl_sf_lngamma(s(k,i)+1)-gsl_sf_lngamma(mxl-s(k,i)+2);
+				}
+
+				// Add the prior contributions
+				logw_old+=-lambda_prior*(MxLayer(i)-MxLayer_min[i]);
+				logw_move+=-lambda_prior*(mxl-MxLayer_min[i]);
+
+				if(gsl_rng_uniform(r)<exp(logw_move-logw_old)) {
+					MxLayer(i)=mxl;
+				}
+			}
+		}
+		
         if(sample%TRIM==0 && sample>BURN_IN){
-
             double F=0;
             for(nu=0;nu<P;nu++){
                 F+=gsl_sf_lngamma(group_sizes(nu)+1);
                 for(k=0;k<4;++k) {
-                    F+=gsl_sf_lnbeta(tmp_mat(k,nu)+1,M*group_sizes(nu)-tmp_mat(k,nu)+1)
-                       -gsl_sf_lngamma(N+P)+gsl_sf_lngamma(P);
+                    F+=gsl_sf_lnbeta(tmp_mat(k,nu)+1,MxLayer(k)*group_sizes(nu)-tmp_mat(k,nu)+1);
+                       //-gsl_sf_lngamma(N+P)+gsl_sf_lngamma(P);
                 }
             }
             for(i=0;i<N;++i) membershipTraj<<ids[i]<<' '; membershipTraj<<endl;
@@ -168,6 +215,9 @@ int main(int argc, char* argv[]){
 				mu++;
 			}
 			pmukTraj<<endl;
+			
+			for(i=0;i<4;i++) MxLayerTraj<<MxLayer(i)<<' ';
+			MxLayerTraj<<endl;
 
 			for(i=0;i<N;i++){
             	for(k=0;k<4;k++){
@@ -187,21 +237,21 @@ int main(int argc, char* argv[]){
         }
 
         if(!PFIX){
-            if(gsl_rng_uniform(r)<0.5){
+            if(gsl_rng_uniform(r)<0.1){
                 if(gsl_rng_uniform(r)<(double)P/(N+P)){
                     P+=1;
+					if(P==11) P=10;
                 }
-            } else {
-                for(mu=0;mu<P;mu++){
-                    if(group_sizes(mu)==0){
-                        P--;
-                        for(i=0;i<N;++i){
-                            if(ids[i]>mu) ids[i]--;
-                        }
-                        break;
-                    }
-                }
+			}
 
+            for(mu=0;mu<P;mu++){
+				if(group_sizes(mu)==0){
+					P--;
+					for(i=0;i<N;++i){
+						if(ids[i]>mu) ids[i]--;
+					}
+					break;
+				}
             }
         }
 

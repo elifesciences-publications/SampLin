@@ -1,19 +1,20 @@
-# ./bin/gibbs_data 200000 0 100 1 1 s_matrix.dat test3
+# Using s_matrix_all. This is the command used:
+# ./bin/gibbsmod_data 100000 1000 10 10 2 s_matrix_all.dat results_040519
 
-folder="test3"
+folder="results_170519"
+
 pmu<-read.table(paste(folder,"/pmuk.dat",sep=""))
 P<-read.table(paste(folder,"/P.dat",sep=""))
 occup<-as.matrix(read.table(paste(folder,"/occupancy.dat",sep="")))
-PMAX=1
+mem_traj<-read.table(paste(folder,"/membership_traj.dat",sep=""))
+PMAX=2
 pmu2<-pmu[P$V1==PMAX,]
-np=10;
-
 
 pdf(paste(folder,"/prob_P.pdf",sep=""),5,5)
 barplot(table(P$V1)/length(P$V1))
 dev.off()
 
-pm<-as.numeric(apply(as.matrix(pmu)[P$V1==PMAX,],2,mean)[1:(4*PMAX)])
+pm<-as.numeric(apply(as.matrix(pmu)[P$V1==PMAX,],2,mean,na.rm=T)[1:(4*PMAX)])
 pdf(paste(folder,"/pmu.pdf",sep=""),8,6)
 image(x=1:4,y=1:PMAX,z=matrix(pm,4,PMAX),col=grey.colors(100),axes=F,xlab="",ylab="")
 dev.off()
@@ -29,7 +30,7 @@ for(k in 1:PMAX){
 }
 dev.off();
 
-s<-read.table("s_matrix.dat")
+s<-read.table("s_matrix_all.dat")
 b=s!=0
 tab<-tabulate(apply(b,1,function(x) sum(c(1,2,4,8)[x])))
 
@@ -58,6 +59,27 @@ image(x=1:4,y=1:PMAX,z=matrix(pm,4,PMAX),col=grey.colors(100),yaxt='n',xlab="",y
 text(x=posiz$Var1,y=posiz$Var2,labels=pm)
 dev.off()
 
+plot_clonalsize <- function(){
+	cop = apply(occup,1, function(x) tabulate(colSums(matrix(as.numeric(x),4)),20))
+    boxplot(t(cop))	
+    points(1:20,tabulate(rowSums(s),nbins=20),col="red")
+
+}
+
+plot_layerocc <- function(){
+	layers=c("II/III", "IV", "V", "VI")
+	layout(matrix(1:4,2,2))
+	par(mar=c(3,3,1,1))
+	for(l in 1:4){
+		cop = apply(occup,1, function(x) tabulate(matrix(as.numeric(x),4)[l,],20))
+    	boxplot(t(cop),main=layers[l])	
+    	points(1:20,tabulate(s[,l],nbins=20),col="red",pch=7)
+	}
+}
+
+pdf(paste(folder,"/layer_occupancy.pdf",sep=""),10,8)
+plot_layerocc()
+dev.off()
 dist_test<-function(n=100,write=F){
 	Gen=matrix(NA,n,103)
 	for(i in 1:n){
