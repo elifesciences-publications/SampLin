@@ -1,15 +1,14 @@
 # Using s_matrix_all. This is the command used:
 # ./bin/gibbsmod_data 100000 1000 10 10 2 s_matrix_all.dat results_040519
 
-folder="results_170519"
+folder="test_2205"
 
-pmu<-read.table(paste(folder,"/pmuk.dat",sep=""))
+pmu<-read.table(paste(folder,"/qmuk.dat",sep=""))
 P<-read.table(paste(folder,"/P.dat",sep=""))
 occup<-as.matrix(read.table(paste(folder,"/occupancy.dat",sep="")))
 mem_traj<-read.table(paste(folder,"/membership_traj.dat",sep=""))
 PMAX=2
 pmu2<-pmu[P$V1==PMAX,]
-
 pdf(paste(folder,"/prob_P.pdf",sep=""),5,5)
 barplot(table(P$V1)/length(P$V1))
 dev.off()
@@ -59,8 +58,8 @@ image(x=1:4,y=1:PMAX,z=matrix(pm,4,PMAX),col=grey.colors(100),yaxt='n',xlab="",y
 text(x=posiz$Var1,y=posiz$Var2,labels=pm)
 dev.off()
 
-plot_clonalsize <- function(){
-	cop = apply(occup,1, function(x) tabulate(colSums(matrix(as.numeric(x),4)),20))
+plot_clonalsize <- function(burn=100){
+	cop = apply(occup[burn:nrow(occup),],1, function(x) tabulate(colSums(matrix(as.numeric(x),4)),20))
     boxplot(t(cop))	
     points(1:20,tabulate(rowSums(s),nbins=20),col="red")
 
