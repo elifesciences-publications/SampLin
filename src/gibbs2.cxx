@@ -43,13 +43,15 @@ int main(int argc, char* argv[]){
     int BURN_IN=atoi(argv[2]);
     int TRIM=atoi(argv[3]);
     int N;
-    int M=20;
+    int M=40, M_tmp=40;
+
     int sample=0;
     int P=atoi(argv[4]); // initial number of lineages
     int RNGSEED=atoi(argv[5]);
     bool PFIX=false;
 	bool verb=false;
-	double log_alpha_MH;
+	bool reject=false;
+	double log_alpha_MH=0;
 
     // prior hyper-parameters
     double alpha_n=1;
@@ -57,7 +59,8 @@ int main(int argc, char* argv[]){
     double beta_p=1;
     double alpha_q=1;
     double beta_q=1;
-    double alpha_DP=.1;
+    double alpha_DP=1e-2;
+	double prior_lambda=30;
 
 	// input matrix s and augmented matrix As
     arma::mat s,As;
@@ -84,13 +87,14 @@ int main(int argc, char* argv[]){
     ofstream pmuTraj(proc_folder+"/pmu.dat");
     ofstream confTraj(proc_folder+"/configurations.dat");
     ofstream occTraj(proc_folder+"/occupancy.dat");
+    ofstream MxClassTraj(proc_folder+"/MxClass.dat");
 
     // ------------------------------------------------------------------------------------------------
     // Initialization
 
     // memberships
-    int ids[N];
-    for(unsigned int i=0;i<N;i++) ids[i] = gsl_rng_uniform_int(r,P);
+	arma::uvec ids(N);
+    for(i=0;i<N;i++) ids[i] = gsl_rng_uniform_int(r,P);
 
     // Define stops as the first non zero element in s. For instance if the occupancy is [0,0,1,2] then stop=2.
     vector<int> stop(N);
@@ -99,6 +103,10 @@ int main(int argc, char* argv[]){
         stop[i]=k;
     }
 
+	// clonal size per class
+	arma::vec MxClass(P);
+	MxClass.fill(M);
+	
 	// initial augmentation
 	for(i=0;i<N;i++){
 		for(k=0;k<stop[i];k++){
@@ -112,7 +120,7 @@ int main(int argc, char* argv[]){
     sample=0;
     while(sample<NITER){
         sample++;
-
+		if(verb) cout<<"start sampling step "<<sample<<endl;
         // binary matrix of memberships
         arma::mat ids_mat(P,N,arma::fill::zeros);
         for(i=0;i<N;++i) ids_mat(ids[i],i)=1;
@@ -131,7 +139,7 @@ int main(int argc, char* argv[]){
             }
         }
         T_vec=sum(T_mat);
-
+	
         // draw type class for all lineages
         for(i=0;i<N;++i){
 
@@ -155,36 +163,79 @@ int main(int argc, char* argv[]){
 
             gen = gsl_ran_discrete_preproc(P+1, tmp_prob);
             mu_new=gsl_ran_discrete(r,gen);
-
             gsl_ran_discrete_free(gen);
             gen=NULL;
+			reject=false;
+
+			reject=lineage_size(i)>MxClass(mu_new);
+
 			arma::vec As_row_i = (As.row(i)).t();
 
             // calculate metropolis-hastings alpha
-
-            if(mu_new<P){
-                log_alpha_MH=gsl_sf_lnbeta(T_vec(mu_new)+lineage_size(i)+alpha_p,(group_sizes(mu_new)+1)*M-T_vec(mu_new)-lineage_size(i)+beta_p)
-                         +gsl_sf_lnbeta(T_vec(mu0)+alpha_p,group_sizes(mu0)*M-T_vec(mu0)+beta_p)
-                         -gsl_sf_lnbeta(T_vec(mu_new)+alpha_p,group_sizes(mu_new)*M-T_vec(mu_new)+beta_p)
-                         -gsl_sf_lnbeta(T_vec(mu0)+lineage_size(i)+alpha_p,(group_sizes(mu0)+1)*M-T_vec(mu0)-lineage_size(i)+beta_p)
+			if(verb){ 
+				cout<<i<<"("<<lineage_size(i)<<") -> "<<mu_new<<"("<<MxClass(mu_new)<<")"<<endl;
+	            if(mu_new==P) cout<<"proposing a new class"<<endl;
+			    if(mu_new<P) reject = MxClass(mu_new)<lineage_size(i);
+			    if(reject) cout<<"this should be rejected"<<endl;
+			}
+			
+            if(mu_new<P && !reject){
+/*
+				cout<<gsl_sf_lnbeta(T_vec(mu_new)+lineage_size(i)+alpha_p,(group_sizes(mu_new)+1)*MxClass(mu_new)-T_vec(mu_new)-lineage_size(i)+beta_p)<<endl;
+				cout<<gsl_sf_lnbeta(T_vec(mu0)+alpha_p,group_sizes(mu0)*MxClass(mu0)-T_vec(mu0)+beta_p)<<endl;
+				cout<<gsl_sf_lnbeta(T_vec(mu_new)+alpha_p,group_sizes(mu_new)*MxClass(mu_new)-T_vec(mu_new)+beta_p)<<endl;
+				cout<<gsl_sf_lnbeta(T_vec(mu0)+lineage_size(i)+alpha_p,(group_sizes(mu0)+1)*MxClass(mu0)-T_vec(mu0)-lineage_size(i)+beta_p)<<endl;
+				cout<<MultiBetaLog(T_mat.col(mu_new)+As_row_i,alpha_q)<<endl;
+				cout<<MultiBetaLog(T_mat.col(mu0),alpha_q)<<endl;
+				cout<<MultiBetaLog(T_mat.col(mu0)+As_row_i,alpha_q)<<endl;
+*/
+				//cout<<MxClass(mu_new)<<' '<<lineage_size(i)<<endl;
+				//cout<<MxClass(mu0)<<' '<<lineage_size(i)<<endl;
+/*			cout<<"sampling lineage "<<i<<", mu_new = "<<mu_new<<"/"<<P<<endl;
+               cout<<T_vec(mu_new)<<endl;
+				cout<<T_vec(mu0)<<endl;
+				cout<<T_mat.col(mu_new)<<endl;
+				cout<<T_mat.col(mu0)<<endl;
+				cout<<As_row_i<<endl;
+*/
+                log_alpha_MH=gsl_sf_lnbeta(T_vec(mu_new)+lineage_size(i)+alpha_p,(group_sizes(mu_new)+1)*MxClass(mu_new)-T_vec(mu_new)-lineage_size(i)+beta_p)
+                         +gsl_sf_lnbeta(T_vec(mu0)+alpha_p,group_sizes(mu0)*MxClass(mu0)-T_vec(mu0)+beta_p)
+                         -gsl_sf_lnbeta(T_vec(mu_new)+alpha_p,group_sizes(mu_new)*MxClass(mu_new)-T_vec(mu_new)+beta_p)
+                         -gsl_sf_lnbeta(T_vec(mu0)+lineage_size(i)+alpha_p,(group_sizes(mu0)+1)*MxClass(mu0)-T_vec(mu0)-lineage_size(i)+beta_p)
 
                          +MultiBetaLog(T_mat.col(mu_new)+As_row_i,alpha_q)
                          +MultiBetaLog(T_mat.col(mu0),alpha_q)
                          -MultiBetaLog(T_mat.col(mu_new),alpha_q)
-                         -MultiBetaLog(T_mat.col(mu0)+As_row_i,alpha_q);
-            } else {
-                log_alpha_MH=gsl_sf_lnbeta(lineage_size(i)+alpha_p,M-lineage_size(i)+beta_p)
-                        +gsl_sf_lnbeta(T_vec(mu0)+alpha_p,group_sizes(mu0)*M-T_vec(mu0)+beta_p)
+                         -MultiBetaLog(T_mat.col(mu0)+As_row_i,alpha_q)
+
+						 +gsl_sf_lnchoose(MxClass(mu_new),lineage_size(i))
+						 -gsl_sf_lnchoose(MxClass(mu0),lineage_size(i));
+
+
+            } else if(mu_new==P) {
+
+				// draw a new value for M 
+				M_tmp = gsl_ran_poisson(r,prior_lambda);
+				reject=M_tmp<lineage_size(i);
+
+				if(!reject){
+
+                	log_alpha_MH=gsl_sf_lnbeta(lineage_size(i)+alpha_p,M_tmp-lineage_size(i)+beta_p)
+                        +gsl_sf_lnbeta(T_vec(mu0)+alpha_p,group_sizes(mu0)*MxClass(mu0)-T_vec(mu0)+beta_p)
                         -gsl_sf_lnbeta(alpha_p,beta_p)
-                        -gsl_sf_lnbeta(T_vec(mu0)+lineage_size(i)+alpha_p,(group_sizes(mu0)+1)*M-T_vec(mu0)-lineage_size(i)+beta_p)
+                        -gsl_sf_lnbeta(T_vec(mu0)+lineage_size(i)+alpha_p,(group_sizes(mu0)+1)*MxClass(mu0)-T_vec(mu0)-lineage_size(i)+beta_p)
 
                         +MultiBetaLog(As_row_i,alpha_q)
                         +MultiBetaLog(T_mat.col(mu0),alpha_q)
                         -MultiBetaLog(arma::zeros(4),alpha_q)
-                        -MultiBetaLog(T_mat.col(mu0)+As_row_i,alpha_q);
+                        -MultiBetaLog(T_mat.col(mu0)+As_row_i,alpha_q)
+
+						 +gsl_sf_lnchoose(M_tmp,lineage_size(i))
+						 -gsl_sf_lnchoose(MxClass(mu0),lineage_size(i));
+				} 
             }
 
-            if(gsl_rng_uniform(r)<exp(log_alpha_MH)){
+            if(gsl_rng_uniform(r)<exp(log_alpha_MH) && !reject){
 
                 ids[i]=mu_new;
                 
@@ -192,6 +243,7 @@ int main(int argc, char* argv[]){
                     T_mat.insert_cols(P,1);
                     T_vec.insert_cols(P,1);
                     group_sizes.insert_rows(P,1);
+					MxClass.insert_rows(P,1); MxClass(P)=M_tmp;
                     P=P+1;
                 }
 
@@ -213,8 +265,8 @@ int main(int argc, char* argv[]){
 
                 T_mat.shed_col(mu0);
                 T_vec.shed_col(mu0);
-				
                 group_sizes.shed_row(mu0);
+				MxClass.shed_row(mu0);
 
             }
 
@@ -223,7 +275,7 @@ int main(int argc, char* argv[]){
         arma::mat qmuk(4,P,arma::fill::zeros);
         arma::vec pmu(P,arma::fill::zeros);
         arma::vec conf(N,arma::fill::zeros);
-        arma::Col<unsigned int> tmp_conf(4);
+        arma::Col<unsigned int> tmp_conf(4,arma::fill::zeros);
 		arma::vec qmuk_mu(4);
 
         for(mu=0;mu<P;mu++){
@@ -238,18 +290,21 @@ int main(int argc, char* argv[]){
 			if(stop[i]>0){
 			   int clonal_size_tmp=0;
 			   int counter=0; 
-   			   while(clonal_size_tmp<lineage_size_from_s(i) && counter<1000){ 
+   			   while(clonal_size_tmp<=lineage_size_from_s(i) && counter<100){ 
 				   counter++;
-				   clonal_size_tmp = gsl_ran_binomial(r,pmu(ids[i]),M);
+				   clonal_size_tmp = gsl_ran_binomial(r,pmu(ids[i]),MxClass(ids[i]));
 			   }
 			   
-			   if(counter<1000){
-				   cout<<clonal_size_tmp<<' '<<lineage_size_from_s(i)<<endl;
+			   if(counter<100){
 				   double* tmp_vec = new double[stop[i]];
 				   for(k=0;k<stop[i];k++) tmp_vec[k]=qmuk(k,ids[i]);
 				   unsigned int*  n_tmp = new unsigned int[stop[i]];
    				   gsl_ran_multinomial(r, stop[i], clonal_size_tmp-lineage_size_from_s(i),tmp_vec,n_tmp);
-				   for(k=0;k<stop[i];k++) As(i,k)=n_tmp[k];
+				   int tmpsum=0; 
+				   for(k=0;k<stop[i];k++){ 
+					   As(i,k)=n_tmp[k];
+					   tmpsum+=n_tmp[k];
+				   }
 				   delete[] tmp_vec,n_tmp;
 			   } else {
 				   for(k=0;k<stop[i];k++) As(i,k)=0;
@@ -258,8 +313,38 @@ int main(int argc, char* argv[]){
 			}
 		}
 
-		lineage_size = sum(As,1);
+		lineage_size = sum(As,1);		
 
+		// sample M in each category at fixed memberships using a metropolis-hastings step.
+		for(mu=0;mu<P;mu++){
+			int mxc = (gsl_rng_uniform(r)>0.5)  ? MxClass(mu)+1 
+  							    				: MxClass(mu)-1;
+			double logw_move=0;
+			double logw_old=0;
+			
+			if(mxc>=arma::max(lineage_size)){
+				// Add the beta functions 
+				logw_move+=gsl_sf_lnbeta(T_vec(mu)+alpha_p,mxc*group_sizes(mu)-T_vec(mu)+beta_p);
+				logw_old+=gsl_sf_lnbeta(T_vec(mu)+alpha_p,MxClass(mu)*group_sizes(mu)-T_vec(mu)+beta_p);
+				
+				// Add the binomial coefficients
+				for(i=0;i<N;i++){
+					if(ids[i]==mu){
+						logw_move+=gsl_sf_lnchoose(mxc,lineage_size(i));
+						logw_old+=gsl_sf_lnchoose(MxClass(mu),lineage_size(i));
+					}
+				}
+
+				// Add the prior contributions
+				logw_move+=-prior_lambda*mxc;
+				logw_old+=-prior_lambda*MxClass(mu);
+
+				if(gsl_rng_uniform(r)<exp(logw_move-logw_old)) {
+					MxClass(mu)=mxc;
+				} 
+			} 
+
+		}
         if(sample%TRIM==0 && sample>BURN_IN){
             double F=0;
             for(nu=0;nu<P;nu++){
@@ -282,6 +367,16 @@ int main(int argc, char* argv[]){
                 mu++;
             }
             qmukTraj<<endl;
+
+			
+			for(mu=0;mu<min(P,10);mu++){
+                MxClassTraj<<MxClass(mu)<<' ';
+            }
+            while(mu<10){
+                MxClassTraj<<"NA"<<' ';
+                mu++;
+            }
+            MxClassTraj<<endl;
 
             for(i=0;i<N;i++){
 				qmuk_mu = qmuk.col(ids[i]);

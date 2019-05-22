@@ -7,7 +7,7 @@ pmu<-read.table(paste(folder,"/qmuk.dat",sep=""))
 P<-read.table(paste(folder,"/P.dat",sep=""))
 occup<-as.matrix(read.table(paste(folder,"/occupancy.dat",sep="")))
 mem_traj<-read.table(paste(folder,"/membership_traj.dat",sep=""))
-PMAX=2
+PMAX=4
 pmu2<-pmu[P$V1==PMAX,]
 pdf(paste(folder,"/prob_P.pdf",sep=""),5,5)
 barplot(table(P$V1)/length(P$V1))
@@ -91,5 +91,12 @@ dist_test<-function(n=100,write=F){
 	boxplot(t(apply(Gen,1,tabulate,nbins=20)))
     points(1:20,tabulate(rowSums(s),nbins=20),col="red")
 	if(write) dev.off()
+}
+
+plot_s_ord <- function(ind){
+	par(mar=c(4,4,2,2))
+	order_membership=order(as.numeric(mem_traj[ind,]))
+	image(x=1:4,y=1:nrow(s),z=t(as.matrix(s)[order_membership,]),col=grey.colors(100),axes=FALSE)
+	axis(2,at=by(1:nrow(s),sort(as.numeric(mem_traj[ind,])),mean),labels=0:max(mem_traj[ind,]))
 }
 

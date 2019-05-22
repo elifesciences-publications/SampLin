@@ -1,4 +1,4 @@
-CC	=	g++ -Wall -std=c++11 -g 
+CC	=	g++ -Wall -std=c++11 -O2 
 UNAME = $(shell uname)
 BINDIR = bin
 OBJDIR = .obj
