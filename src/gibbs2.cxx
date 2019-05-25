@@ -48,8 +48,8 @@ int main(int argc, char* argv[]){
     int sample=0;
     int P=atoi(argv[4]); // initial number of lineages
     int RNGSEED=atoi(argv[5]);
-    bool PFIX=false;
-	bool verb=false;
+
+    bool verb=false;
 	bool reject=false;
 	double log_alpha_MH=0;
 
@@ -59,7 +59,7 @@ int main(int argc, char* argv[]){
     double beta_p=1;
     double alpha_q=1;
     double beta_q=1;
-    double alpha_DP=1e-2;
+    double alpha_DP=1e-1;
 	double prior_lambda=30;
 
 	// input matrix s and augmented matrix As
@@ -108,11 +108,13 @@ int main(int argc, char* argv[]){
 	MxClass.fill(M);
 	
 	// initial augmentation
+
 	for(i=0;i<N;i++){
 		for(k=0;k<stop[i];k++){
 			As(i,k) = gsl_ran_binomial(r,0.6,lineage_size(i));
 		}
 	}
+
 
     // ------------------------------------------------------------------------------------------------
     // Gibbs iterations
@@ -141,6 +143,7 @@ int main(int argc, char* argv[]){
         T_vec=sum(T_mat);
 	
         // draw type class for all lineages
+        if(verb) cout<<"sweep lineage membership"<<endl;
         for(i=0;i<N;++i){
 
             // current class
@@ -189,8 +192,8 @@ int main(int argc, char* argv[]){
 				cout<<MultiBetaLog(T_mat.col(mu0),alpha_q)<<endl;
 				cout<<MultiBetaLog(T_mat.col(mu0)+As_row_i,alpha_q)<<endl;
 */
-				//cout<<MxClass(mu_new)<<' '<<lineage_size(i)<<endl;
-				//cout<<MxClass(mu0)<<' '<<lineage_size(i)<<endl;
+//                cout<<MxClass(mu_new)<<' '<<lineage_size(i)<<endl;
+//                cout<<MxClass(mu0)<<' '<<lineage_size(i)<<endl;
 /*			cout<<"sampling lineage "<<i<<", mu_new = "<<mu_new<<"/"<<P<<endl;
                cout<<T_vec(mu_new)<<endl;
 				cout<<T_vec(mu0)<<endl;
@@ -272,59 +275,21 @@ int main(int argc, char* argv[]){
 
         }
 
-        arma::mat qmuk(4,P,arma::fill::zeros);
-        arma::vec pmu(P,arma::fill::zeros);
-        arma::vec conf(N,arma::fill::zeros);
-        arma::Col<unsigned int> tmp_conf(4,arma::fill::zeros);
-		arma::vec qmuk_mu(4);
 
-        for(mu=0;mu<P;mu++){
-            qmuk.col(mu)=dirichlet(r,T_mat.col(mu)+alpha_q);
-            pmu(mu)=gsl_ran_beta(r,T_vec(mu)+alpha_p,group_sizes(mu)*M-T_vec(mu)+beta_p);
-        }
-
-        // data augmentation here
-		for(i=0;i<N;i++){
-			// generate clonal size by requiring a binomial number larger than
-			// the clonal size from s
-			if(stop[i]>0){
-			   int clonal_size_tmp=0;
-			   int counter=0; 
-   			   while(clonal_size_tmp<=lineage_size_from_s(i) && counter<100){ 
-				   counter++;
-				   clonal_size_tmp = gsl_ran_binomial(r,pmu(ids[i]),MxClass(ids[i]));
-			   }
-			   
-			   if(counter<100){
-				   double* tmp_vec = new double[stop[i]];
-				   for(k=0;k<stop[i];k++) tmp_vec[k]=qmuk(k,ids[i]);
-				   unsigned int*  n_tmp = new unsigned int[stop[i]];
-   				   gsl_ran_multinomial(r, stop[i], clonal_size_tmp-lineage_size_from_s(i),tmp_vec,n_tmp);
-				   int tmpsum=0; 
-				   for(k=0;k<stop[i];k++){ 
-					   As(i,k)=n_tmp[k];
-					   tmpsum+=n_tmp[k];
-				   }
-				   delete[] tmp_vec,n_tmp;
-			   } else {
-				   for(k=0;k<stop[i];k++) As(i,k)=0;
-			   }
-
-			}
-		}
-
-		lineage_size = sum(As,1);		
+        if(verb) cout<<"draw new M"<<endl;
 
 		// sample M in each category at fixed memberships using a metropolis-hastings step.
+
 		for(mu=0;mu<P;mu++){
 			int mxc = (gsl_rng_uniform(r)>0.5)  ? MxClass(mu)+1 
   							    				: MxClass(mu)-1;
 			double logw_move=0;
 			double logw_old=0;
 			
-			if(mxc>=arma::max(lineage_size)){
+            if(mxc>=arma::max(lineage_size(arma::find(ids==mu)))){
 				// Add the beta functions 
-				logw_move+=gsl_sf_lnbeta(T_vec(mu)+alpha_p,mxc*group_sizes(mu)-T_vec(mu)+beta_p);
+                if(verb) cout<<T_vec(mu)<<' '<<mxc<<' '<<MxClass(mu)<<' '<<group_sizes(mu)<<endl;
+                logw_move+=gsl_sf_lnbeta(T_vec(mu)+alpha_p,mxc*group_sizes(mu)-T_vec(mu)+beta_p);
 				logw_old+=gsl_sf_lnbeta(T_vec(mu)+alpha_p,MxClass(mu)*group_sizes(mu)-T_vec(mu)+beta_p);
 				
 				// Add the binomial coefficients
@@ -345,6 +310,53 @@ int main(int argc, char* argv[]){
 			} 
 
 		}
+
+
+        arma::mat qmuk(4,P,arma::fill::zeros);
+        arma::vec pmu(P,arma::fill::zeros);
+        arma::vec conf(N,arma::fill::zeros);
+        arma::Col<unsigned int> tmp_conf(4,arma::fill::zeros);
+        arma::vec qmuk_mu(4);
+
+        for(mu=0;mu<P;mu++){
+            qmuk.col(mu)=dirichlet(r,T_mat.col(mu)+alpha_q);
+            pmu(mu)=gsl_ran_beta(r,T_vec(mu)+alpha_p,group_sizes(mu)*M-T_vec(mu)+beta_p);
+        }
+        if(verb) cout<<"Data augmentation"<<endl;
+
+        // data augmentation here
+        for(i=0;i<N;i++){
+            // generate clonal size by requiring a binomial number larger than
+            // the clonal size from s
+            if(stop[i]>0){
+               int clonal_size_tmp=0;
+               int counter=0;
+               while(clonal_size_tmp<=lineage_size_from_s(i) && counter<100){
+                   counter++;
+                   clonal_size_tmp = gsl_ran_binomial(r,pmu(ids[i]),MxClass(ids[i]));
+               }
+
+               if(counter<100){
+                   double* tmp_vec = new double[stop[i]];
+                   for(k=0;k<stop[i];k++) tmp_vec[k]=qmuk(k,ids[i]);
+                   unsigned int*  n_tmp = new unsigned int[stop[i]];
+                   gsl_ran_multinomial(r, stop[i], clonal_size_tmp-lineage_size_from_s(i),tmp_vec,n_tmp);
+                   int tmpsum=0;
+                   for(k=0;k<stop[i];k++){
+                       As(i,k)=n_tmp[k];
+                       tmpsum+=n_tmp[k];
+                   }
+                   delete[] tmp_vec,n_tmp;
+               } else {
+                   for(k=0;k<stop[i];k++) As(i,k)=0;
+               }
+
+            }
+        }
+
+        lineage_size = sum(As,1);
+
+
         if(sample%TRIM==0 && sample>BURN_IN){
             double F=0;
             for(nu=0;nu<P;nu++){

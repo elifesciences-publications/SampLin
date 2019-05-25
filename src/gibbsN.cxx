@@ -41,7 +41,7 @@ int main(int argc, char* argv[]){
     int M=20;
 	int MxLayer_min[4]; 
     int P=atoi(argv[4]); // initial number of lineages
-	vector<int> MxLayer(P);
+    arma::vec MxLayer(P);
     int RNGSEED=atoi(argv[5]);
     bool PFIX=false;
 
@@ -82,7 +82,7 @@ int main(int argc, char* argv[]){
 	}
 
 	for(i=0;i<4;++i){
-		MxLayer(i)=M;
+        MxLayer(i)=M;
 	}
 
     gsl_ran_discrete_t* gen=NULL;

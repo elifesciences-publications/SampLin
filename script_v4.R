@@ -1,14 +1,15 @@
 # Using s_matrix_all. This is the command used:
 # ./bin/gibbsmod_data 100000 1000 10 10 2 s_matrix_all.dat results_040519
 
-folder="test_2205"
+folder="test_250519"
 
 pmu<-read.table(paste(folder,"/qmuk.dat",sep=""))
 P<-read.table(paste(folder,"/P.dat",sep=""))
 occup<-as.matrix(read.table(paste(folder,"/occupancy.dat",sep="")))
 mem_traj<-read.table(paste(folder,"/membership_traj.dat",sep=""))
-PMAX=4
+PMAX=6
 pmu2<-pmu[P$V1==PMAX,]
+mem<-apply(mem_traj[(nrow(mem_traj)-100):nrow(mem_traj),][P$V1==PMAX,],2,function(x) which.max(tabulate(x+1)))
 pdf(paste(folder,"/prob_P.pdf",sep=""),5,5)
 barplot(table(P$V1)/length(P$V1))
 dev.off()
@@ -29,7 +30,7 @@ for(k in 1:PMAX){
 }
 dev.off();
 
-s<-read.table("s_matrix_all.dat")
+s<-read.table("s_matrix.dat")
 b=s!=0
 tab<-tabulate(apply(b,1,function(x) sum(c(1,2,4,8)[x])))
 
@@ -79,6 +80,7 @@ plot_layerocc <- function(){
 pdf(paste(folder,"/layer_occupancy.pdf",sep=""),10,8)
 plot_layerocc()
 dev.off()
+
 dist_test<-function(n=100,write=F){
 	Gen=matrix(NA,n,103)
 	for(i in 1:n){
@@ -93,10 +95,16 @@ dist_test<-function(n=100,write=F){
 	if(write) dev.off()
 }
 
-plot_s_ord <- function(ind){
+plot_s_ord <- function(ind=NA){
+
 	par(mar=c(4,4,2,2))
-	order_membership=order(as.numeric(mem_traj[ind,]))
+	if(is.na(ind)) {
+		order_membership=order(mem)
+	} else {
+		order_membership=order(as.numeric(mem_traj[ind,]))
+	}
+
 	image(x=1:4,y=1:nrow(s),z=t(as.matrix(s)[order_membership,]),col=grey.colors(100),axes=FALSE)
-	axis(2,at=by(1:nrow(s),sort(as.numeric(mem_traj[ind,])),mean),labels=0:max(mem_traj[ind,]))
+	axis(2,at=by(1:nrow(s),sort(as.numeric(mem)),mean),labels=1:max(mem))
 }
 
