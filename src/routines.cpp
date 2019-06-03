@@ -32,6 +32,10 @@ double gsl_ran_beta_pdflog(double x, double alpha, double beta){
     }
 }
 
+double gsl_ran_poisson_pdflog(double lambda,int N){
+	return(-lambda+N*log(lambda)-gsl_sf_lngamma(N+1));
+}
+
 double MultiBetaLog(const arma::vec &x,double alpha=0){
     double r=0;
     for(unsigned int i=0;i<x.n_elem;++i){

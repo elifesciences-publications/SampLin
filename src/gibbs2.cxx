@@ -43,7 +43,8 @@ int main(int argc, char* argv[]){
     int BURN_IN=atoi(argv[2]);
     int TRIM=atoi(argv[3]);
     int N;
-    int M=40, M_tmp=40;
+    int M=20, M_tmp;
+	int MXCMAX=20;
 
     int sample=0;
     int P=atoi(argv[4]); // initial number of lineages
@@ -58,9 +59,9 @@ int main(int argc, char* argv[]){
     double alpha_p=1;
     double beta_p=1;
     double alpha_q=1;
-    double beta_q=1;
     double alpha_DP=1e-1;
-	double prior_lambda=30;
+	double prior_lambda=10;
+	double prior_M_sd=3;
 
 	// input matrix s and augmented matrix As
     arma::mat s,As;
@@ -108,12 +109,13 @@ int main(int argc, char* argv[]){
 	MxClass.fill(M);
 	
 	// initial augmentation
-
+if(false){
 	for(i=0;i<N;i++){
 		for(k=0;k<stop[i];k++){
-			As(i,k) = gsl_ran_binomial(r,0.6,lineage_size(i));
+			As(i,k) = gsl_ran_binomial(r,0.2,lineage_size(i));
 		}
 	}
+}
 
 
     // ------------------------------------------------------------------------------------------------
@@ -218,8 +220,13 @@ int main(int argc, char* argv[]){
             } else if(mu_new==P) {
 
 				// draw a new value for M 
-				M_tmp = gsl_ran_poisson(r,prior_lambda);
+				//M_tmp = gsl_ran_poisson(r,prior_lambda); // for poisson
+				M_tmp = gsl_rng_uniform_int(r,MXCMAX);   // for uniform
 				reject=M_tmp<lineage_size(i);
+				
+				// Let's fix it instead
+				//M_tmp = M;
+				//reject=false;
 
 				if(!reject){
 
@@ -280,13 +287,14 @@ int main(int argc, char* argv[]){
 
 		// sample M in each category at fixed memberships using a metropolis-hastings step.
 
+		if(true){
 		for(mu=0;mu<P;mu++){
 			int mxc = (gsl_rng_uniform(r)>0.5)  ? MxClass(mu)+1 
   							    				: MxClass(mu)-1;
 			double logw_move=0;
 			double logw_old=0;
 			
-            if(mxc>=arma::max(lineage_size(arma::find(ids==mu)))){
+            if(mxc>=arma::max(lineage_size(arma::find(ids==mu))) && mxc<MXCMAX){
 				// Add the beta functions 
                 if(verb) cout<<T_vec(mu)<<' '<<mxc<<' '<<MxClass(mu)<<' '<<group_sizes(mu)<<endl;
                 logw_move+=gsl_sf_lnbeta(T_vec(mu)+alpha_p,mxc*group_sizes(mu)-T_vec(mu)+beta_p);
@@ -301,15 +309,18 @@ int main(int argc, char* argv[]){
 				}
 
 				// Add the prior contributions
-				logw_move+=-prior_lambda*mxc;
-				logw_old+=-prior_lambda*MxClass(mu);
+				//logw_move+=gsl_ran_poisson_pdflog(prior_lambda,mxc);
+				//logw_old+=gsl_ran_poisson_pdflog(prior_lambda,MxClass(mu));
+				
+				logw_move+=0;
+				logw_old+=0;
 
 				if(gsl_rng_uniform(r)<exp(logw_move-logw_old)) {
 					MxClass(mu)=mxc;
 				} 
 			} 
 
-		}
+		}}
 
 
         arma::mat qmuk(4,P,arma::fill::zeros);
@@ -320,9 +331,12 @@ int main(int argc, char* argv[]){
 
         for(mu=0;mu<P;mu++){
             qmuk.col(mu)=dirichlet(r,T_mat.col(mu)+alpha_q);
-            pmu(mu)=gsl_ran_beta(r,T_vec(mu)+alpha_p,group_sizes(mu)*M-T_vec(mu)+beta_p);
+            pmu(mu)=gsl_ran_beta(r,T_vec(mu)+alpha_p,group_sizes(mu)*MxClass(mu)-T_vec(mu)+beta_p);
         }
+
         if(verb) cout<<"Data augmentation"<<endl;
+
+		if(false){
 
         // data augmentation here
         for(i=0;i<N;i++){
@@ -331,12 +345,12 @@ int main(int argc, char* argv[]){
             if(stop[i]>0){
                int clonal_size_tmp=0;
                int counter=0;
-               while(clonal_size_tmp<=lineage_size_from_s(i) && counter<100){
+               while(clonal_size_tmp<=lineage_size_from_s(i)){
                    counter++;
                    clonal_size_tmp = gsl_ran_binomial(r,pmu(ids[i]),MxClass(ids[i]));
                }
 
-               if(counter<100){
+               if(true){
                    double* tmp_vec = new double[stop[i]];
                    for(k=0;k<stop[i];k++) tmp_vec[k]=qmuk(k,ids[i]);
                    unsigned int*  n_tmp = new unsigned int[stop[i]];
@@ -354,8 +368,9 @@ int main(int argc, char* argv[]){
             }
         }
 
-        lineage_size = sum(As,1);
 
+        lineage_size = sum(As,1);
+}
 
         if(sample%TRIM==0 && sample>BURN_IN){
             double F=0;
@@ -390,9 +405,20 @@ int main(int argc, char* argv[]){
             }
             MxClassTraj<<endl;
 
+			
+			for(mu=0;mu<min(P,10);mu++){
+                pmuTraj<<pmu(mu)<<' ';
+            }
+            while(mu<10){
+                pmuTraj<<"NA"<<' ';
+                mu++;
+            }
+            pmuTraj<<endl;
+
             for(i=0;i<N;i++){
 				qmuk_mu = qmuk.col(ids[i]);
-				gsl_ran_multinomial(r,4,lineage_size(i),qmuk_mu.memptr(),tmp_conf.memptr());
+				int LS_tmp = gsl_ran_binomial(r,pmu(ids[i]),MxClass(ids[i]));
+				gsl_ran_multinomial(r,4,LS_tmp,qmuk_mu.memptr(),tmp_conf.memptr());
                 for(k=0;k<4;k++){
                     if(k>=stop[i]){
                         if(tmp_conf(k)>0) conf(i)+=pow(2,k);

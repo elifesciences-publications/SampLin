@@ -14,6 +14,6 @@ arma::vec dirichlet(gsl_rng *r, const arma::vec &alpha);
 // Useful functions
 bool fileExists(const char* file);
 double gsl_ran_beta_pdflog(double x, double alpha, double beta);
+double gsl_ran_poisson_pdflog(double lambda,int N);
 double MultiBetaLog(const arma::vec &,double);
-
 #endif
