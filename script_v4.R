@@ -1,7 +1,7 @@
 # Using s_matrix_all. This is the command used:
 # ./bin/gibbsmod_data 100000 1000 10 10 2 s_matrix_all.dat results_040519
 
-folder="results_310519"
+folder="results_150619"
 
 pmu<-read.table(paste(folder,"/qmuk.dat",sep=""))
 pmuXclass<-read.table(paste(folder,"/pmu.dat",sep=""))
