@@ -194,7 +194,7 @@ int main(int argc, char* argv[]){
 
         for(k=0;k<4;k++){
             for(mu=0;mu<P;mu++){
-                pmuk(k,mu)=gsl_ran_beta(r,tmp_mat(k,mu),M*group_sizes(mu)-tmp_mat(k,mu));
+                pmuk(k,mu)=gsl_ran_beta(r,tmp_mat(k,mu),M*group_sizes_xLayer(mu,k)-tmp_mat(k,mu));
             }
         }
 
@@ -202,9 +202,9 @@ int main(int argc, char* argv[]){
         if(sample%TRIM==0 && sample>BURN_IN){
             double F=0;
             for(nu=0;nu<P;nu++){
-                F+=gsl_sf_lngamma(group_sizes(nu)+1);
+                F+=0;
                 for(k=0;k<4;++k) {
-                    F+=gsl_sf_lnbeta(tmp_mat(k,nu)+1,M*group_sizes(nu)-tmp_mat(k,nu)+1);
+                    F+=gsl_sf_lnbeta(tmp_mat(k,nu)+alpha_p,M*group_sizes_xLayer(nu,k)-tmp_mat(k,nu)+beta_p);
                        //-gsl_sf_lngamma(N+P)+gsl_sf_lngamma(P);
                 }
             }
